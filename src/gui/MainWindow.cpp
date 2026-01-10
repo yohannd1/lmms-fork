@@ -26,6 +26,7 @@
 
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDebug> // TODO: remove
 #include <QDesktopServices>
 #include <QDomElement>
 #include <QFileInfo>
@@ -155,7 +156,21 @@ MainWindow::MainWindow() :
 	sideBar->appendTab(new FileBrowser(FileBrowser::Type::Normal, root_paths.join("*"), FileItem::defaultFilters(), title,
 		embed::getIconPixmap("computer").transformed(QTransform().rotate(90)), splitter, dirs_as_items));
 
-	m_workspace = new MovableQMdiArea(splitter);
+	const auto hasMaximizedWindows = [this]()
+	{
+		for (const auto* subWindow : workspace()->subWindowList())
+		{
+			if (subWindow->isMaximized())
+			{
+
+				return true;
+			}
+		}
+
+		return false;
+	};
+
+	m_workspace = new MovableQMdiArea(splitter, &m_keyMods, hasMaximizedWindows);
 
 	// Load background
 	emit initProgress(tr("Loading background picture"));
@@ -1597,12 +1612,18 @@ void MainWindow::onProjectFileNameChanged()
 }
 
 
-MainWindow::MovableQMdiArea::MovableQMdiArea(QWidget* parent) :
-	QMdiArea(parent),
-	m_isBeingMoved(false),
-	m_lastX(0),
-	m_lastY(0)
-{}
+MainWindow::MovableQMdiArea::MovableQMdiArea(QWidget* parent, keyModifiers* keyMods,
+	std::function<bool()> hasMaximizedWindows)
+	: QMdiArea(parent)
+	, panAnywhere{false}
+	, m_keyMods{keyMods}
+	, m_isBeingMoved{false}
+	, m_lastX{0}
+	, m_lastY{0}
+	, m_hasMaximizedWindows{hasMaximizedWindows}
+{
+	parent->installEventFilter(this);
+}
 
 void MainWindow::MovableQMdiArea::mousePressEvent(QMouseEvent* event)
 {
@@ -1666,6 +1687,74 @@ void MainWindow::MovableQMdiArea::mouseReleaseEvent(QMouseEvent* event)
 {
 	setCursor(Qt::ArrowCursor);
 	m_isBeingMoved = false;
+}
+
+bool MainWindow::MovableQMdiArea::eventFilter(QObject* watched, QEvent* event)
+{
+	// This event filter attempts to steal mouse events related to panning
+	// without needing to click over a region without any widgets.
+
+	if (event->type() == QEvent::MouseButtonPress && panAnywhere)
+	{
+		QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
+
+		if (mouseEvent->button() == Qt::LeftButton)
+		{
+			mousePressEvent(mouseEvent);
+			return true;
+		}
+	}
+
+	if (event->type() == QEvent::MouseMove && m_isBeingMoved)
+	{
+		QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
+		mouseMoveEvent(mouseEvent);
+		return true;
+	}
+
+	if (event->type() == QEvent::MouseButtonRelease && m_isBeingMoved)
+	{
+		QMouseEvent *mouseEvent = static_cast<QMouseEvent*>(event);
+		mouseReleaseEvent(mouseEvent);
+		return true;
+	}
+
+	if (panAnywhere)
+	{
+		if (event->type() == QEvent::KeyPress)
+		{
+			// Ignore keypresses while pan-anywhere is enabled
+			return true;
+		}
+
+		if (event->type() == QEvent::KeyRelease && panAnywhere)
+		{
+			// Disable pan-anywhere if S has been released
+			QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+			if (keyEvent->key() == Qt::Key_S)
+			{
+				panAnywhere = false;
+				return true;
+			}
+		}
+	}
+	else
+	{
+		// Enable pan-anywhere upon pressing Alt+S
+		if (event->type() == QEvent::KeyPress && m_keyMods->m_alt)
+		{
+			QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+			if (keyEvent->key() == Qt::Key_S)
+			{
+				// Only enable it if there are no maximized windows and the
+				// mouse is over the MDI area (or its children).
+				panAnywhere = !m_hasMaximizedWindows() && underMouse();
+				return true;
+			}
+		}
+	}
+
+	return QObject::eventFilter(watched, event);
 }
 
 } // namespace lmms::gui

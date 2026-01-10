@@ -200,21 +200,28 @@ private:
 	bool guiSaveProject();
 	bool guiSaveProjectAs( const QString & filename );
 
+	struct keyModifiers;
 	class MovableQMdiArea : public QMdiArea
 	{
 	public:
-		MovableQMdiArea(QWidget* parent = nullptr);
+		MovableQMdiArea(QWidget* parent, keyModifiers* keyMods, std::function<bool()> hasMaximizedWindows);
 		~MovableQMdiArea() {}
+
+		//! Indicates that a panning action can be initiated through a
+		// left-button mouse drag.
+		bool panAnywhere;
 	protected:
 		void mousePressEvent(QMouseEvent* event) override;
 		void mouseMoveEvent(QMouseEvent* event) override;
 		void mouseReleaseEvent(QMouseEvent* event) override;
+		bool eventFilter(QObject* watched, QEvent* event) override;
 	private:
+		keyModifiers* m_keyMods;
 		bool m_isBeingMoved;
 		int m_lastX;
 		int m_lastY;
+		std::function<bool()> m_hasMaximizedWindows;
 	};
-
 	MovableQMdiArea * m_workspace;
 
 	QWidget * m_toolBar;
