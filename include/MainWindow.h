@@ -208,8 +208,7 @@ private:
 			@param hasActiveMaxWindow Function that should return whether there are any active maximized windows, in
 			order to avoid initiating a pan in that case.
 		*/
-		MovableQMdiArea(QWidget* parent, keyModifiers* keyMods,
-			std::function<bool()> hasActiveMaxWindow);
+		MovableQMdiArea(QWidget* parent, MainWindow* mainWindow, keyModifiers* keyMods, QScrollBar* scrollBarV, QScrollBar* scrollBarH);
 
 		~MovableQMdiArea() {}
 
@@ -217,12 +216,23 @@ private:
 		void mousePressEvent(QMouseEvent* event) override;
 		void mouseMoveEvent(QMouseEvent* event) override;
 		void mouseReleaseEvent(QMouseEvent* event) override;
+		void resizeEvent(QResizeEvent* event) override;
+		void childEvent(QChildEvent* event) override;
 		bool eventFilter(QObject* watched, QEvent* event) override;
+		void sliderMoved(QScrollBar* scrollBar);
 
 	private:
-		void panStart(int globalX, int globalY);
-		void panMove(int globalX, int globalY);
-		void panEnd();
+		void mousePanStart(int globalX, int globalY);
+		void mousePanMove(int globalX, int globalY);
+		void mousePanEnd();
+		void scroll(int scrollX, int scrollY);
+		void updateScrollBars();
+		bool hasActiveMaxWindow();
+
+		static constexpr int Margin = 100; //!< Margin used along with the active workspace area.
+
+		//! Get the workspace area where there are windows as a [minX, maxX, minY, maxY] tuple.
+		std::tuple<int, int, int, int> getActiveWorkspaceArea();
 
 		keyModifiers* m_keyMods;
 		bool m_isBeingMoved; //!< Whether the workspace is being panned
@@ -230,9 +240,15 @@ private:
 		bool m_canUniversalPan; //!< Whether panning can be started without clicking on a free area
 		int m_lastX;
 		int m_lastY;
-		std::function<bool()> m_hasActiveMaxWindow;
+		MainWindow* m_mainWindow;
+		QScrollBar* m_scrollBarV;
+		QScrollBar* m_scrollBarH;
+		int m_scrollBarLastY;
+		int m_scrollBarLastX;
 	};
-	MovableQMdiArea * m_workspace;
+	MovableQMdiArea* m_workspace;
+	QScrollBar* m_workspaceScrollBarH;
+	QScrollBar* m_workspaceScrollBarV;
 
 	QWidget * m_toolBar;
 	QGridLayout * m_toolBarLayout;
