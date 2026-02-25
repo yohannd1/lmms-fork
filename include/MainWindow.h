@@ -211,12 +211,12 @@ private:
 		void wheelEvent(QWheelEvent *event) override;
 	};
 
-	struct keyModifiers;
 	class MovableQMdiArea : public QMdiArea
 	{
 	public:
-		MovableQMdiArea(QWidget* parent, MainWindow* mainWindow, keyModifiers* keyMods, QScrollBar* scrollBarV, QScrollBar* scrollBarH);
+		MovableQMdiArea(QWidget* parent, MainWindow* mainWindow, QScrollBar* scrollBarV, QScrollBar* scrollBarH);
 		~MovableQMdiArea() {}
+		bool universalPanClick; //!< Whether clicking is needed to initiate universal panning
 
 	protected:
 		void mousePressEvent(QMouseEvent* event) override;
@@ -228,7 +228,7 @@ private:
 		void sliderMoved(QScrollBar* scrollBar);
 
 	private:
-		void mousePanStart(int globalX, int globalY);
+		void mousePanStart(); //!< Previous position must have been already fed to `m_lastX` and `m_lastY`
 		void mousePanMove(int globalX, int globalY);
 		void mousePanEnd();
 		void scroll(int scrollX, int scrollY);
@@ -240,10 +240,9 @@ private:
 		//! Get the workspace area where there are windows as a [minX, maxX, minY, maxY] tuple.
 		std::tuple<int, int, int, int> getActiveWorkspaceArea();
 
-		keyModifiers* m_keyMods;
-		bool m_isBeingMoved; //!< Whether the workspace is being panned
+		bool m_isPanning; //!< Whether the workspace is being panned
 		bool m_isUniversalPan; //!< Whether the current panning is universal
-		bool m_canUniversalPan; //!< Whether panning can be started without clicking on a free area
+		bool m_canUniversalPan; //!< Whether universal panning can be started (for when )
 		int m_lastX;
 		int m_lastY;
 		MainWindow* m_mainWindow;
