@@ -136,24 +136,21 @@ PatchesDialog::PatchesDialog( QWidget *pParent, Qt::WindowFlags wflags )
 	QObject::connect(m_filterEdit, &QLineEdit::textChanged, this, [this](const QString& text) {
 		m_progListProxyModel.setFilterRegularExpression(
 			QRegularExpression(text, QRegularExpression::CaseInsensitiveOption));
-		diffSelectProgRow(0); // just fix the selection if it has been invalidated
+		diffSelectProgRow(0); // fix the selection if it has been invalidated
 	});
 	QObject::connect(m_bankListView,
 		SIGNAL(currentItemChanged(QTreeWidgetItem*,QTreeWidgetItem*)),
 		SLOT(bankChanged()));
 	QObject::connect(m_progListView,
 		&QTableView::doubleClicked, this, &PatchesDialog::accept);
-	QObject::connect(m_progListView->selectionModel(),
-		&QItemSelectionModel::currentRowChanged, this,
-		[this](auto& cur, auto& prev) { progChanged(cur, prev); });
+	QObject::connect(m_progListView->selectionModel(), &QItemSelectionModel::currentRowChanged,
+		this, &PatchesDialog::progChanged);
 	QObject::connect(m_okButton,
 		SIGNAL(clicked()),
 		SLOT(accept()));
 	QObject::connect(m_cancelButton,
 		SIGNAL(clicked()),
 		SLOT(reject()));
-
-	installEventFilter(this);
 }
 
 
@@ -231,20 +228,20 @@ void PatchesDialog::setup ( fluid_synth_t * pSynth, int iChan,
 	bankChanged();
 
 	// Set the selected program.
-	if (pPreset)
-		m_iProg = fluid_preset_get_num(pPreset);
+	if (pPreset) { m_iProg = fluid_preset_get_num(pPreset); }
 
 	if (auto progItem = findProgItem(m_iProg); progItem != nullptr)
 	{
 		auto sourceIdx = progItem->index();
 		auto proxyIdx = m_progListProxyModel.mapFromSource(sourceIdx);
+
 		if (proxyIdx.isValid())
 		{
+			constexpr auto setMask = QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows;
 			int row = proxyIdx.row();
 			auto idx = m_progListView->model()->index(row, 0);
 
-			m_progListView->selectionModel()->setCurrentIndex(idx,
-				QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+			m_progListView->selectionModel()->setCurrentIndex(idx, setMask);
 			m_progListView->scrollTo(idx);
 		}
 	}
@@ -328,17 +325,12 @@ QTreeWidgetItem *PatchesDialog::findBankItem ( int iBank )
 		return nullptr;
 }
 
-
-QStandardItem *PatchesDialog::findProgItem(int iProg)
+QStandardItem* PatchesDialog::findProgItem(int iProg)
 {
-	QList<QStandardItem*> progs = m_progListSourceModel.findItems(
-		QString::number(iProg), Qt::MatchExactly, 0);
+	QList<QStandardItem*> progs = m_progListSourceModel.findItems(QString::number(iProg), Qt::MatchExactly, 0);
 
-	QListIterator<QStandardItem*> iter(progs);
-	if (iter.hasNext())
-		return iter.next();
-	else
-		return nullptr;
+	auto it = QListIterator<QStandardItem*>(progs);
+	return it.hasNext() ? it.next() : nullptr;
 }
 
 
@@ -416,15 +408,12 @@ void PatchesDialog::updatePatch(bool updateUi)
 	}
 }
 
-// Program change slot.
 void PatchesDialog::progChanged(const QModelIndex& cur, const QModelIndex& prev)
 {
-	if (m_pSynth == nullptr)
-		return;
+	if (m_pSynth == nullptr) { return; }
 
 	auto curRow = m_progListProxyModel.mapToSource(cur).row();
-	if (curRow < 0)
-		return;
+	if (curRow < 0) { return; }
 
 	auto progIdx = m_progListSourceModel.index(curRow, 0);
 	m_selProg = m_progListSourceModel.data(progIdx).toInt();
@@ -445,20 +434,26 @@ void PatchesDialog::progChanged(const QModelIndex& cur, const QModelIndex& prev)
 	stabilizeForm();
 }
 
-bool PatchesDialog::eventFilter(QObject *obj, QEvent *event)
+void PatchesDialog::keyPressEvent(QKeyEvent* event)
 {
-	if (obj == this && event->type() == QEvent::KeyPress)
-	{
-		auto key = static_cast<QKeyEvent*>(event)->key();
-		if (key == Qt::Key_Up || key == Qt::Key_Down)
-		{
-			int rowDiff = (key == Qt::Key_Up) ? -1 : +1;
-			diffSelectProgRow(rowDiff);
-			return true;
-		}
-	}
+	const auto key = event->key();
 
-	return QDialog::eventFilter(obj, event);
+	if (key == Qt::Key_Up || key == Qt::Key_Down)
+	{
+		event->accept();
+		int rowDiff = (key == Qt::Key_Up) ? -1 : +1;
+		diffSelectProgRow(rowDiff);
+	}
+	else if (key == Qt::Key_Return || key == Qt::Key_Enter)
+	{
+		event->accept();
+		accept();
+	}
+	else if (key == Qt::Key_Escape)
+	{
+		event->accept();
+		reject();
+	}
 }
 
 void PatchesDialog::diffSelectProgRow(int offset)
@@ -470,9 +465,10 @@ void PatchesDialog::diffSelectProgRow(int offset)
 	int rowCount = m_progListView->model()->rowCount();
 	newRow = qBound(0, newRow, rowCount - 1);
 
-	selectionModel->setCurrentIndex(m_progListView->model()->index(newRow, 0),
-		QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
-	m_progListView->scrollTo(m_progListView->model()->index(newRow, 0));
+	constexpr auto selMask = QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows;
+	const auto idx = m_progListView->model()->index(newRow, 0);
+	selectionModel->setCurrentIndex(idx, selMask);
+	m_progListView->scrollTo(idx);
 }
 
 } // namespace lmms::gui
