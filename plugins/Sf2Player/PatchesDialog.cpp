@@ -28,8 +28,6 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QKeyEvent>
-#include <QSortFilterProxyModel>
-#include <QStandardItemModel>
 #include <QStandardItem>
 
 #include "embed.h"
@@ -38,37 +36,15 @@
 namespace lmms::gui
 {
 
-//! Custom list-view item (for numerical sorting purposes)
-class PatchItem : public QTreeWidgetItem
+namespace
 {
-public:
-	PatchItem(QTreeWidget* pListView, QTreeWidgetItem *pItemAfter)
-		: QTreeWidgetItem(pListView, pItemAfter)
-	{
-	}
-
-	bool operator<(const QTreeWidgetItem& other) const override
-	{
-		int iColumn = QTreeWidgetItem::treeWidget()->sortColumn();
-		const QString& s1 = text( iColumn );
-		const QString& s2 = other.text( iColumn );
-		if (iColumn == 0 || iColumn == 2)
-		{
-			return s1.toInt() < s2.toInt();
-		}
-		else
-		{
-			return s1 < s2;
-		}
-	}
-};
-
-// Row numbers for each column in the table.
-// The code here is written as to allow reordering these. Might not be needed...
+// Row numbers for each column in the table, as to reduce issues when reordering them.
 static constexpr auto ColBank = 0;
 static constexpr auto ColPatch = 1;
 static constexpr auto ColName = 2;
-static constexpr auto TotalCols = 3;
+static constexpr auto ColSearchSort = 3; //!< For an invisible column used in sorting
+static constexpr auto TotalCols = 4;
+}
 
 PatchesDialog::PatchesDialog(QWidget* parent, Qt::WindowFlags wflags)
 	: QDialog(parent, wflags)
@@ -99,13 +75,14 @@ PatchesDialog::PatchesDialog(QWidget* parent, Qt::WindowFlags wflags)
 	headerLabels[ColName] = tr("Name");
 	headerLabels[ColBank] = tr("Bank");
 	headerLabels[ColPatch] = tr("Patch");
+	headerLabels[ColSearchSort] = "HIDE THIS";
 	m_progListSourceModel.setHorizontalHeaderLabels(headerLabels);
 
 	// Configure program list models
 	m_progListProxyModel.setSourceModel(&m_progListSourceModel);
 	m_progListProxyModel.setFilterCaseSensitivity(Qt::CaseInsensitive);
-	m_progListProxyModel.setFilterKeyColumn(ColName);
 	m_progListProxyModel.setDynamicSortFilter(true);
+	m_progListProxyModel.setFilterKeyColumn(ColName);
 
 	// Configure program list view
 	m_progListView->setModel(&m_progListProxyModel);
@@ -115,6 +92,7 @@ PatchesDialog::PatchesDialog(QWidget* parent, Qt::WindowFlags wflags)
 	m_progListView->setSortingEnabled(true);
 	m_progListView->sortByColumn(ColPatch, Qt::AscendingOrder);
 	m_progListView->setColumnHidden(ColBank, true);
+	m_progListView->setColumnHidden(ColSearchSort, true);
 
 	constexpr int RowHeight = 18;
 	auto progVHeader = m_progListView->verticalHeader();
@@ -166,17 +144,17 @@ PatchesDialog::PatchesDialog(QWidget* parent, Qt::WindowFlags wflags)
 	QObject::connect(m_cancelButton, &QPushButton::clicked, this, &PatchesDialog::reject);
 }
 
-void PatchesDialog::setup(fluid_synth_t* pSynth, int iChan, const QString& _chanName,
-	LcdSpinBoxModel* _bankModel, LcdSpinBoxModel* _progModel, QLabel* _patchLabel)
+void PatchesDialog::setup(fluid_synth_t* pSynth, int iChan, const QString& chanName,
+	LcdSpinBoxModel* bankModel, LcdSpinBoxModel* progModel, QLabel* patchLabel)
 {
 	// We're going to change the whole thing...
 	m_dirty = 0;
-	m_bankModel = _bankModel;
-	m_progModel = _progModel;
-	m_patchLabel = _patchLabel;
+	m_bankModel = bankModel;
+	m_progModel = progModel;
+	m_patchLabel = patchLabel;
 
 	// Set the proper caption
-	setWindowTitle(tr("%1 - Soundfont patches").arg(_chanName));
+	setWindowTitle(tr("%1 - Soundfont patches").arg(chanName));
 
 	// Set m_pSynth to null so we don't trigger any progChanged events
 	m_pSynth = nullptr;
@@ -189,7 +167,6 @@ void PatchesDialog::setup(fluid_synth_t* pSynth, int iChan, const QString& _chan
 	m_pSynth = pSynth;
 	m_iChan = iChan;
 
-	QTreeWidgetItem *bankItem = nullptr;
 	// For all soundfonts, in reversed stack order, fill the available banks
 	int cSoundFonts = ::fluid_synth_sfcount(m_pSynth);
 	for (int i = 0; i < cSoundFonts; i++)
@@ -215,11 +192,9 @@ void PatchesDialog::setup(fluid_synth_t* pSynth, int iChan, const QString& _chan
 #endif
 				if (!findBankItem(iBank))
 				{
-					bankItem = new PatchItem(m_bankListView, bankItem);
-					if (bankItem)
-					{
-						bankItem->setText(0, QString::number(iBank));
-					}
+					auto* bankItem = new QTreeWidgetItem();
+					bankItem->setData(0, Qt::DisplayRole, iBank);
+					m_bankListView->addTopLevelItem(bankItem);
 				}
 			}
 		}
@@ -229,14 +204,15 @@ void PatchesDialog::setup(fluid_synth_t* pSynth, int iChan, const QString& _chan
 	// Set the selected bank.
 	m_iBank = 0;
 	fluid_preset_t *pPreset = ::fluid_synth_get_channel_preset(m_pSynth, m_iChan);
-	if (pPreset) {
+	if (pPreset)
+	{
 		m_iBank = fluid_preset_get_banknum(pPreset);
 #ifdef CONFIG_FLUID_BANK_OFFSET
 		m_iBank += ::fluid_synth_get_bank_offset(m_pSynth, fluid_sfont_get_id(fluid_preset_get_sfont(sfont)));
 #endif
 	}
 
-	bankItem = findBankItem(m_iBank);
+	auto* bankItem = findBankItem(m_iBank);
 	m_bankListView->setCurrentItem(bankItem);
 	m_bankListView->scrollToItem(bankItem);
 	updatePatchList();
@@ -253,8 +229,7 @@ void PatchesDialog::setup(fluid_synth_t* pSynth, int iChan, const QString& _chan
 		{
 			constexpr auto setMask = QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows;
 			int row = proxyIdx.row();
-			auto idx = m_progListView->model()->index(row, 0);
-
+			auto idx = m_progListView->model()->index(row, ColPatch);
 			m_progListView->selectionModel()->setCurrentIndex(idx, setMask);
 			m_progListView->scrollTo(idx);
 		}
@@ -397,13 +372,20 @@ void PatchesDialog::diffSelectProgRow(int offset)
 	newRow = std::clamp(0, newRow, rowCount - 1);
 
 	constexpr auto selMask = QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows;
-	const auto idx = m_progListView->model()->index(newRow, 0);
+	const auto idx = m_progListView->model()->index(newRow, ColPatch);
 	selectionModel->setCurrentIndex(idx, selMask);
+
+	// NOTE: scrollTo() has to receive an index that points to a visible column. Be careful about that!
 	m_progListView->scrollTo(idx);
 }
 
 void PatchesDialog::updateSearchUi(bool isSearching)
 {
+	// FIXME: every time the search starts or stops, the sort column is changed, violating what the user may
+	// have picked. I'd say this doesn't matter most of the time (I doubt most would sort before searching)
+	// but it might get annoying.
+	m_progListView->sortByColumn(isSearching ? ColSearchSort : ColPatch, Qt::AscendingOrder);
+
 	m_progListView->setColumnHidden(ColBank, !isSearching);
 	showAllBankPatches(isSearching);
 	m_bankListView->setHidden(isSearching);
@@ -411,6 +393,7 @@ void PatchesDialog::updateSearchUi(bool isSearching)
 
 void PatchesDialog::showAllBankPatches(bool value)
 {
+	// This check here avoids having to reload all patches for every character typed.
 	if (value == m_showingAllBankPatches) { return; }
 	m_showingAllBankPatches = value;
 	updatePatchList();
@@ -466,12 +449,15 @@ void PatchesDialog::updatePatchList()
 					const auto patchNumItem = makeNumItem(iProg);
 					const auto bankNumItem = makeNumItem(iBank);
 					const auto patchNameItem = new QStandardItem(fluid_preset_get_name(pCurPreset));
+					const auto sortNumItem = makeNumItem(iBank * 1000 + iProg);
 
 					// Old columns:
 					// - QString::number(fluid_sfont_get_id(pSoundFont))
 					// - QFileInfo(fluid_sfont_get_name(pSoundFont).baseName())
 
-					m_progListSourceModel.appendRow({bankNumItem, patchNumItem, patchNameItem});
+					m_progListSourceModel.appendRow({bankNumItem, patchNumItem, patchNameItem, sortNumItem});
+
+					// If only showing the patches of a single bank, stop.
 					if (!m_showingAllBankPatches) { stop = true; }
 				}
 			}
