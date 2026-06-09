@@ -134,6 +134,7 @@ public:
 	void clearKeyModifiers();
 
 	bool isShiftPressed() const { return m_keyMods.m_shift; }
+	bool isKeyDPressed;
 
 	static void saveWidgetState( QWidget * _w, QDomElement & _de );
 	static void restoreWidgetState( QWidget * _w, const QDomElement & _de );

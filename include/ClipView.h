@@ -218,6 +218,7 @@ private:
 	QColor m_textShadowColor;
 	QColor m_patternClipBackground;
 	bool m_gradient;
+	bool m_keyDPressed;
 	QColor m_markerColor;
 
 	bool m_needsUpdate;

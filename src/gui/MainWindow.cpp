@@ -80,6 +80,7 @@ namespace lmms::gui
 
 
 MainWindow::MainWindow() :
+	isKeyDPressed{false},
 	m_workspace( nullptr ),
 	m_toolsMenu( nullptr ),
 	m_autoSaveTimer( this ),
@@ -1348,6 +1349,7 @@ void MainWindow::keyPressEvent( QKeyEvent * _ke )
 		case Qt::Key_Control: m_keyMods.m_ctrl = true; break;
 		case Qt::Key_Shift: m_keyMods.m_shift = true; break;
 		case Qt::Key_Alt: m_keyMods.m_alt = true; break;
+		case Qt::Key_D: isKeyDPressed = true; break;
 		case Qt::Key_Space:
 		{
 			if (Editor::lastPlayedEditor() != nullptr)
@@ -1383,6 +1385,7 @@ void MainWindow::keyReleaseEvent( QKeyEvent * _ke )
 		case Qt::Key_Control: m_keyMods.m_ctrl = false; break;
 		case Qt::Key_Shift: m_keyMods.m_shift = false; break;
 		case Qt::Key_Alt: m_keyMods.m_alt = false; break;
+		case Qt::Key_D: isKeyDPressed = false; break;
 		default:
 			if( InstrumentTrackView::topLevelInstrumentTrackWindow() )
 			{

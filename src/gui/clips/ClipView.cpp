@@ -51,6 +51,7 @@
 #include "TrackContainer.h"
 #include "TrackContainerView.h"
 #include "TrackView.h"
+#include "MainWindow.h"
 
 namespace lmms::gui
 {
@@ -605,6 +606,7 @@ void ClipView::paintTextLabel(QString const & text, QPainter & painter)
  *  * or if just plain left button, resize if we're resizeable
  *  * or if ctrl-middle button, mute the clip
  *  * or if middle button, maybe delete the clip.
+ *  * or if alt-shift-d plus left click, delete the clip.
  *
  * \param me The QMouseEvent to handle.
  */
@@ -731,6 +733,13 @@ void ClipView::mousePressEvent( QMouseEvent * me )
 			}
 			m_hint = TextFloat::displayMessage( tr( "Hint" ), hint.arg(UI_COPY_KEY),
 					embed::getIconPixmap( "hint" ), 0 );
+		}
+
+		if (me->modifiers() & (Qt::ShiftModifier | Qt::AltModifier)
+			&& getGUI()->mainWindow()->isKeyDPressed && !fixedClips())
+		{
+			active = getClickedClips();
+			remove(active);
 		}
 	}
 	else if( me->button() == Qt::RightButton )
