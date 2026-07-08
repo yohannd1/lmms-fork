@@ -64,7 +64,6 @@ NotePlayHandle::NotePlayHandle( InstrumentTrack* instrumentTrack,
 	m_releaseFramesDone( 0 ),
 	m_subNotes(),
 	m_state{NotePlayHandle::State::Playing},
-	m_releaseStarted{false},
 	m_hasMidiNote( false ),
 	m_hasParent( parent != nullptr  ),
 	m_parent( parent ),
@@ -197,7 +196,7 @@ void NotePlayHandle::play( SampleFrame* _working_buffer )
 		return;
 	}
 
-	if (m_state == NotePlayHandle::State::PendingRelease) { noteOff(); }
+	tryNoteOff();
 
 	lock();
 
@@ -264,11 +263,8 @@ void NotePlayHandle::play( SampleFrame* _working_buffer )
 		m_instrumentTrack->playNote( this, _working_buffer );
 	}
 
-	if (m_state == NotePlayHandle::State::Released
-		&& (!instrumentTrack()->isSustainPedalPressed() || m_releaseStarted))
+	if (m_state == NotePlayHandle::State::Released)
 	{
-		m_releaseStarted = true;
-
 		f_cnt_t todo = framesThisPeriod;
 
 		// if this note is base-note for arpeggio, always set
@@ -375,7 +371,11 @@ void NotePlayHandle::noteOff( const f_cnt_t _s )
 		return;
 	}
 
+	// if it's already released, do nothing
 	if (m_state == NotePlayHandle::State::Released) { return; }
+
+
+
 	m_state = NotePlayHandle::State::Released;
 
 	// first note-off all sub-notes
@@ -412,7 +412,14 @@ void NotePlayHandle::noteOff( const f_cnt_t _s )
 	}
 }
 
-
+void NotePlayHandle::tryNoteOff(const f_cnt_t _s)
+{
+	if (m_state != NotePlayHandle::State::PendingRelease) { return; }
+	if (!instrumentTrack()->isSustainPedalPressed())
+	{
+		noteOff(_s);
+	}
+}
 
 
 f_cnt_t NotePlayHandle::actualReleaseFramesToDo() const

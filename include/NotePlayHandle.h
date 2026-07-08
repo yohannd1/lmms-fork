@@ -130,6 +130,9 @@ public:
 	/*! Releases the note (and plays release frames) */
 	void noteOff( const f_cnt_t offset = 0 );
 
+	//! Attempts to release the note if the conditions apply.
+	void tryNoteOff(const f_cnt_t offset = 0);
+
 	/*! Returns number of frames to be played until the note is going to be released */
 	f_cnt_t framesBeforeRelease() const
 	{
@@ -159,11 +162,6 @@ public:
 	bool isReleased() const
 	{
 		return m_state == State::Released;
-	}
-
-	bool isReleaseStarted() const
-	{
-		return m_releaseStarted;
 	}
 
 	/*! Returns total numbers of frames played so far */
@@ -313,7 +311,6 @@ private:
 	};
 	std::atomic<State> m_state = State::Playing;
 	static_assert(std::atomic<State>::is_always_lock_free);
-	bool m_releaseStarted = false; //!< whether the release has started
 
 	bool m_hasMidiNote;
 	bool m_hasParent;						// indicates whether note has parent
