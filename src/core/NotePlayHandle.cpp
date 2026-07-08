@@ -63,6 +63,8 @@ NotePlayHandle::NotePlayHandle( InstrumentTrack* instrumentTrack,
 	m_releaseFramesToDo( 0 ),
 	m_releaseFramesDone( 0 ),
 	m_subNotes(),
+	m_state{NotePlayHandle::State::Playing},
+	m_releaseStarted{false},
 	m_hasMidiNote( false ),
 	m_hasParent( parent != nullptr  ),
 	m_parent( parent ),
@@ -195,7 +197,7 @@ void NotePlayHandle::play( SampleFrame* _working_buffer )
 		return;
 	}
 
-	if (m_pendingRelease) { noteOff(); }
+	if (m_state == NotePlayHandle::State::PendingRelease) { noteOff(); }
 
 	lock();
 
@@ -219,9 +221,9 @@ void NotePlayHandle::play( SampleFrame* _working_buffer )
 	 * which results in a note-on message being sent without a subsequent note-off message.
 	 * Therefore, we check here whether the note has already been released before sending
 	 * the note-on message. */
-	if( !m_released
+	if (m_state != NotePlayHandle::State::Released
 		&& m_totalFramesPlayed == 0 && !m_hasMidiNote
-		&& ( hasParent() || ! m_instrumentTrack->isArpeggioEnabled() ) )
+		&& (hasParent() || ! m_instrumentTrack->isArpeggioEnabled()))
 	{
 		m_hasMidiNote = true;
 
@@ -245,9 +247,8 @@ void NotePlayHandle::play( SampleFrame* _working_buffer )
 		: Engine::audioEngine()->framesPerPeriod();
 
 	// check if we start release during this period
-	if( m_released == false &&
-		instrumentTrack()->isSustainPedalPressed() == false &&
-		m_totalFramesPlayed + framesThisPeriod > m_frames )
+	if (m_state != NotePlayHandle::State::Released && !instrumentTrack()->isSustainPedalPressed()
+		&& m_totalFramesPlayed + framesThisPeriod > m_frames)
 	{
 		noteOff( m_totalFramesPlayed == 0
 			? ( m_frames + offset() ) // if we have noteon and noteoff during the same period, take offset in account for release frame
@@ -263,8 +264,8 @@ void NotePlayHandle::play( SampleFrame* _working_buffer )
 		m_instrumentTrack->playNote( this, _working_buffer );
 	}
 
-	if( m_released && (!instrumentTrack()->isSustainPedalPressed() ||
-		m_releaseStarted) )
+	if (m_state == NotePlayHandle::State::Released
+		&& (!instrumentTrack()->isSustainPedalPressed() || m_releaseStarted))
 	{
 		m_releaseStarted = true;
 
@@ -332,11 +333,11 @@ f_cnt_t NotePlayHandle::framesLeft() const
 	{
 		return 4 * Engine::audioEngine()->framesPerPeriod();
 	}
-	else if( m_released && actualReleaseFramesToDo() == 0 )
+	else if (m_state == NotePlayHandle::State::Released && actualReleaseFramesToDo() == 0)
 	{
 		return m_framesBeforeRelease;
 	}
-	else if( m_released )
+	else if (m_state == NotePlayHandle::State::Released)
 	{
 		return m_framesBeforeRelease + m_releaseFramesToDo - m_releaseFramesDone;
 	}
@@ -364,24 +365,18 @@ bool NotePlayHandle::isFromTrack( const Track * _track ) const
 }
 
 
-
-
 void NotePlayHandle::noteOff( const f_cnt_t _s )
 {
 	// if a noteOff() arrives before first play() is called, there will be no sound at all
 	// so, store the 'intent' of noteOff to be called again after first play
 	if (m_totalFramesPlayed <= 0)
 	{
-		m_pendingRelease = true;
+		m_state = NotePlayHandle::State::PendingRelease;
 		return;
 	}
-	m_pendingRelease = false;
 
-	if( m_released )
-	{
-		return;
-	}
-	m_released = true;
+	if (m_state == NotePlayHandle::State::Released) { return; }
+	m_state = NotePlayHandle::State::Released;
 
 	// first note-off all sub-notes
 	for( NotePlayHandle * n : m_subNotes )
@@ -515,7 +510,7 @@ bool NotePlayHandle::operator==( const NotePlayHandle & _nph ) const
 			m_frames == _nph.m_frames &&
 			offset() == _nph.offset() &&
 			m_totalFramesPlayed == _nph.m_totalFramesPlayed &&
-			m_released == _nph.m_released &&
+			m_state == _nph.m_state &&
 			m_hasParent == _nph.m_hasParent &&
 			m_origBaseNote == _nph.m_origBaseNote &&
 			m_muted == _nph.m_muted &&

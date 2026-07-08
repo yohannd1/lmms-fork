@@ -115,7 +115,7 @@ public:
 	/*! Returns whether playback of note is finished and thus handle can be deleted */
 	bool isFinished() const override
 	{
-		return m_released && framesLeft() <= 0;
+		return m_state == State::Released && framesLeft() <= 0;
 	}
 
 	/*! Returns number of frames left for playback */
@@ -158,7 +158,7 @@ public:
 	/*! Returns whether note was released */
 	bool isReleased() const
 	{
-		return m_released;
+		return m_state == State::Released;
 	}
 
 	bool isReleaseStarted() const
@@ -289,7 +289,7 @@ private:
 		float m_value;
 
 	} ;
-
+	
 	void updateFrequency();
 
 	InstrumentTrack* m_instrumentTrack;		// needed for calling
@@ -305,9 +305,16 @@ private:
 	f_cnt_t m_releaseFramesDone;			// number of frames done after
 											// release of note
 	NotePlayHandleList m_subNotes;			// used for chords and arpeggios
-	volatile bool m_released = false;		// indicates whether note is released
-	bool m_pendingRelease = false;
-	bool m_releaseStarted = false;
+
+	enum class State {
+		Playing,
+		PendingRelease,
+		Released,
+	};
+	std::atomic<State> m_state = State::Playing;
+	static_assert(std::atomic<State>::is_always_lock_free);
+	bool m_releaseStarted = false; //!< whether the release has started
+
 	bool m_hasMidiNote;
 	bool m_hasParent;						// indicates whether note has parent
 	NotePlayHandle * m_parent;			// parent note
