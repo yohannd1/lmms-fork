@@ -51,6 +51,7 @@
 #include "InstrumentTrackView.h"
 #include "InstrumentTrackWindow.h"
 #include "MicrotunerConfig.h"
+#include "PathUtil.h"
 #include "PatternEditor.h"
 #include "PianoRoll.h"
 #include "PianoView.h"
@@ -1490,7 +1491,7 @@ void MainWindow::onExportProjectMidi()
 		QString export_filename = efd.selectedFiles()[0];
 		if (!export_filename.endsWith(suffix)) export_filename += suffix;
 
-		Engine::getSong()->exportProjectMidi(export_filename);
+		Engine::getSong()->exportProjectMidi(PathUtil::stringToPath(export_filename));
 	}
 }
 
