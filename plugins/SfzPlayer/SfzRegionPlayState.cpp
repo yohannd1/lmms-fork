@@ -28,6 +28,7 @@
 
 #include "AudioEngine.h"
 #include "Engine.h"
+#include "interpolation.h"
 #include "lmms_math.h"
 #include "MicroTimer.h"
 
@@ -90,13 +91,13 @@ SfzRegionPlayState::SfzRegionPlayState(SfzRegion* region, const SfzTrigger& trig
 void SfzRegionPlayState::precomputeBaseValues()
 {
 	// Helper variable
-	const float normalizedVelocity = m_trigger.velocity().value() / 127.0f;
+	const float normalizedVelocity = m_trigger.velocity() / 127.0f;
 
 	// Compute the base pitch
 	// The pitch env/lfo will be applied on top of this, as those are calcualted per frame
 
 	// Calculate pitch difference relative to original sample
-	const float semitoneDifference = m_trigger.key().value() - m_region->m_pitch_keycenter;
+	const float semitoneDifference = m_trigger.key() - m_region->m_pitch_keycenter;
 	// The base pitch depends on 1. the key offset, 2. the fine `tune` adjustment, 3. the velocity, if pitch_veltrack is nonzero
 	// These are all in cents, so divide by 100 to get semitones
 	const float pitch = semitoneDifference * m_region->m_pitch_keytrack / 100.0f
@@ -202,6 +203,29 @@ float SfzRegionPlayState::lfoGenerator(const f_cnt_t delay, const f_cnt_t fade, 
 
 
 
+// Helper function for hermite interpolation of the sample buffer data
+float SfzRegionPlayState::interpolatedSample(const float index, const size_t channel) const
+{
+	if (index < 0 || index >= m_sampleObject->size()) { return 0.0f; }
+
+	const f_cnt_t indexFloor = static_cast<f_cnt_t>(index);
+
+	float frac = index - indexFloor;
+
+	f_cnt_t i0 = indexFloor == 0 ? 0 : indexFloor - 1;
+	f_cnt_t i1 = indexFloor;
+	f_cnt_t i2 = std::min(indexFloor + 1, m_sampleObject->size() - 1);
+	f_cnt_t i3 = std::min(indexFloor + 2, m_sampleObject->size() - 1);
+
+	float v0 = m_sampleObject->data()[i0][channel];
+	float v1 = m_sampleObject->data()[i1][channel];
+	float v2 = m_sampleObject->data()[i2][channel];
+	float v3 = m_sampleObject->data()[i3][channel];
+
+	return hermiteInterpolate(v0, v1, v2, v3, frac);
+}
+
+
 
 
 bool SfzRegionPlayState::play(SampleFrame* buffer, const f_cnt_t frames)
@@ -217,12 +241,12 @@ bool SfzRegionPlayState::play(SampleFrame* buffer, const f_cnt_t frames)
 	if (m_sampleObject == nullptr && m_region->basicWaveShape() == SfzBasicWaves::Shape::Silence) { m_active = false; return false; }
 
 	// Helper variable
-	const float normalizedVelocity = m_trigger.velocity().value() / 127.0f;
+	const float normalizedVelocity = m_trigger.velocity() / 127.0f;
 
 	// Pitch difference due to pitchbending/microtuning. This is provided by the NotePlayHandle every buffer. The NPH might not have been the one which created this voice (SFZ is a midi based format and doesn't really work well with the NPH system of lmms), so we just get the freq of the last NPH on the same key as the event which triggered this voice.
-	const float notePlayHandleFreqRatio = m_globalState->nphKeyFreqRatio(m_trigger.key().value()); // TODO can this ever be 0.0f, like if the midi event is processed before the note play handle and it doesn't get set in time? I don't think so but I'm not 100% sure.
+	const float notePlayHandleFreqRatio = m_globalState->nphKeyFreqRatio(m_trigger.key()); // TODO can this ever be 0.0f, like if the midi event is processed before the note play handle and it doesn't get set in time? I don't think so but I'm not 100% sure.
 	// Panning from the NotePlayHandle
-	const float notePlayHandlePanning = m_globalState->nphKeyPanning(m_trigger.key().value());
+	const float notePlayHandlePanning = m_globalState->nphKeyPanning(m_trigger.key());
 	const float nphPanningLeftAmp = std::min(1.0f, 1.0f - notePlayHandlePanning / 100.0f);
 	const float nphPanningRightAmp = std::min(1.0f, 1.0f + notePlayHandlePanning / 100.0f);
 
@@ -293,8 +317,8 @@ bool SfzRegionPlayState::play(SampleFrame* buffer, const f_cnt_t frames)
 		float sampleRightValue = 0.0f;
 		if (m_sampleObject != nullptr) // TODO: should this check be outside of the loop?
 		{
-			sampleLeftValue = m_sampleObject->at(m_sampleFrame, 0);
-			sampleRightValue = m_sampleObject->at(m_sampleFrame, 1);
+			sampleLeftValue = interpolatedSample(m_sampleFrame, 0);
+			sampleRightValue = interpolatedSample(m_sampleFrame, 1);
 		}
 		else
 		{

@@ -24,6 +24,7 @@
 
 #include "SfzParser.h"
 #include "SfzOpcodeState.h"
+#include "PathUtil.h"
 #include <QStringList>
 #include <QRegularExpression>
 #include <QDebug>
@@ -38,8 +39,8 @@ bool SfzParser::parseSfzFile(const QString& filePath, std::vector<SfzRegion>& ou
 	outputRegions.clear();
 
 	// Open the .sfz file
-	QDir parentDirectory = QFileInfo(filePath).absoluteDir();
-	QFile file(filePath);
+	QDir parentDirectory = QFileInfo(PathUtil::toAbsolute(filePath)).absoluteDir();
+	QFile file(PathUtil::toAbsolute(filePath));
 
 	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
 	{
@@ -262,7 +263,7 @@ bool SfzParser::parseSfzFile(const QString& filePath, std::vector<SfzRegion>& ou
 		if (match.hasMatch())
 		{
 			int ccNumber = match.captured(0).split("cc")[1].toInt();
-			if (ccNumber >= 0 && ccNumber <= NumMidiCCs) { controlsConfig.m_activeMidiCCs.at(ccNumber) = true; }
+			if (ccNumber >= 0 && ccNumber <= NumMidiCCs) { controlsConfig.activeMidiCCs().at(ccNumber) = true; }
 		}
 	}
 	// Check one last time in case the file ended with a region and didn't get added
@@ -276,11 +277,11 @@ bool SfzParser::parseSfzFile(const QString& filePath, std::vector<SfzRegion>& ou
 		if (region.m_sw_last != std::nullopt)
 		{
 			SfzControlsConfig::SwitchKeyInfo info;
-			info.sw_label = region.m_sw_label.value_or("");
-			info.sw_lokey = region.m_sw_lokey;
-			info.sw_hikey = region.m_sw_hikey;
-			info.sw_default = region.m_sw_default.m_value; // Directly accessing m_value, since casting to std::optional is difficult; it always wants to cast to int or something, and crashes when it's std::nullopt?
-			controlsConfig.m_switchKeyInfo.insert({region.m_sw_last, info});
+			info.swLabel = region.m_sw_label.value_or("");
+			info.swLokey = region.m_sw_lokey;
+			info.swHikey = region.m_sw_hikey;
+			info.swDefault = region.m_sw_default.m_value; // Directly accessing m_value, since casting to std::optional is difficult; it always wants to cast to int or something, and crashes when it's std::nullopt?
+			controlsConfig.switchKeyInfo().insert({region.m_sw_last, info});
 		}
 	}
 

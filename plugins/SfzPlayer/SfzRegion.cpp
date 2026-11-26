@@ -27,6 +27,7 @@
 #include "Engine.h"
 #include "AudioEngine.h"
 #include "PathUtil.h"
+#include "SampleCache.h"
 
 #include <QDebug>
 
@@ -70,8 +71,8 @@ bool SfzRegion::triggerConditionsMet(const SfzGlobalState& globalState, const Sf
 	// Assuming the trigger has key/vel info (i.e., it's a noteOn/noteOff, not a midi CC event), make sure all the key/vel selectors match
 	if (trigger.type() == SfzTrigger::Type::NoteOn || trigger.type() == SfzTrigger::Type::NoteOff)
 	{
-		const int triggerKey = trigger.key().value();
-		const int triggerVelocity = trigger.velocity().value();
+		const int triggerKey = trigger.key();
+		const int triggerVelocity = trigger.velocity();
 
 		// Ensure the key was pressed between the `lokey` and `hikey` opcodes
 		// TODO this can be removed now that SfzRegionManager handles lookup tables for regions by key
@@ -121,7 +122,7 @@ void SfzRegion::recalculateTotalCCModulation(const SfzGlobalState& globalState)
 }
 
 
-bool SfzRegion::initializeSample(const QDir& parentDirectory, SfzSamplePool& samplePool, bool* sampleInPool)
+bool SfzRegion::initializeSample(const QDir& parentDirectory)
 {
 	if (m_sampleFile == std::nullopt)
 	{
@@ -149,8 +150,8 @@ bool SfzRegion::initializeSample(const QDir& parentDirectory, SfzSamplePool& sam
 		path = PathUtil::toAbsolute(path);
 		// Check if the file exists before calling the LMMS function to load it, since that will spawn a popup window if it can't load it, which could be hundreds of popups if its a large sfz
 		if (!QFile::exists(path)) { return false; }
-		// The sample pool handles making sure the same sample isn't loaded twice, which would waste memory
-		m_sample = samplePool.loadSample(path, sampleInPool); // sampleInPool is passed so that we can tell the SfzPlayer if it actually needed to load it from disk or whether it was previously loaded and could be retrieved.
+		// LMMS's sample cache makes sure the same sample isn't loaded twice, which would waste memory
+		m_sample = SampleCache::instance().fetchBuffer(PathUtil::stringToPath(path));
 		m_samplePointer = m_sample.get(); // Unfortunately, not all the builds support std::atomic<std::shared_ptr>, so we use both a shared_ptr (m_sample) and an atomic raw pointer (m_samplePointer).
 
 		return m_samplePointer != nullptr;

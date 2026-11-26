@@ -1,5 +1,5 @@
 /*
- * SfzTrigger.h - Custom class for representing MIDI events relevant to the SFZ player
+ * SfzTrigger.h - Custom data container for representing MIDI events relevant to the SFZ player
  *
  * Copyright (c) 2026 Keratin
  *
@@ -30,8 +30,8 @@
 namespace lmms
 {
 
-
-class SfzTrigger
+//! Custom data container for representing MIDI events relevant to the SFZ player
+struct SfzTrigger
 {
 public:
 	//! Helper functions for creating different types of events
@@ -44,22 +44,22 @@ public:
 		NoteOn,
 		NoteOff,
 		ControlChange,
+		None
 	};
 
-	const auto& type() const { return m_type; }
-	const auto& key() const { return m_key; }
-	const auto& velocity() const { return m_velocity; }
-	const auto& controlChangeNumber() const { return m_controlChangeNumber; }
-	const auto& controlChangeValue() const { return m_controlChangeValue; }
-	const int frameOffset() const { return m_frameOffset; }
+	Type type() const { return m_type; }
+	int key() const { return m_key; }
+	int velocity() const { return m_velocity; }
+	int controlChangeNumber() const { return m_controlChangeNumber; }
+	int controlChangeValue() const { return m_controlChangeValue; }
+	int frameOffset() const { return m_frameOffset; }
 
 private:
-	Type m_type;
-	// TODO should these be optionals or not?
-	std::optional<int> m_key = std::nullopt;
-	std::optional<int> m_velocity = std::nullopt;
-	std::optional<int> m_controlChangeNumber = std::nullopt;
-	std::optional<int> m_controlChangeValue = std::nullopt;
+	Type m_type = Type::None;
+	int m_key = 0;
+	int m_velocity = 0;
+	int m_controlChangeNumber = 0;
+	int m_controlChangeValue = 0;
 	//! The event probably occurred partway through a buffer, so this variable keeps track of when exactly it occurred relative to the start of the buffer
 	int m_frameOffset = 0;
 };

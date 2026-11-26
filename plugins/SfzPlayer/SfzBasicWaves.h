@@ -28,6 +28,7 @@
 namespace lmms
 {
 
+//! Generators for audio wave shapes such as sine, saw, triangle, noise, etc
 class SfzBasicWaves
 {
 public:
@@ -40,15 +41,16 @@ public:
 		Noise,
 		Silence
 	};
+
 	//! Returns the calculated value of the waveform shape at the given number of frames from the start, given the sample rate.
-	static const float generate(Shape shape, float sampleRate, int frame);
+	static float generate(Shape shape, float sampleRate, int frame);
 
 private:
-	static const float sine(float t);
-	static const float saw(float t);
-	static const float square(float t);
-	static const float triangle(float t);
-	static const float noise(float t);
+	static float sine(float t);
+	static float saw(float t);
+	static float square(float t);
+	static float triangle(float t);
+	static float noise(float t);
 };
 
 } // namespace lmms

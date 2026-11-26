@@ -37,7 +37,6 @@
 #include "Song.h"
 #include "ThreadPool.h"
 #include "embed.h"
-#include "interpolation.h"
 #include "plugin_export.h"
 
 #include "GuiApplication.h"
@@ -67,7 +66,6 @@ PLUGIN_EXPORT Plugin* lmms_plugin_main(Model* m, void*)
 
 SfzPlayer::SfzPlayer(InstrumentTrack* instrumentTrack)
 	: Instrument(instrumentTrack, &sfzplayer_plugin_descriptor, nullptr, Flag::IsSingleStreamed)
-	, m_samplePool(SfzSamplePool::instance())
 	, m_parentTrack(instrumentTrack)
 	, m_preloadAllSamplesModel(false, this, tr("Preload All Samples"))
 {
@@ -157,11 +155,10 @@ void SfzPlayer::processTrigger(const SfzTrigger& trigger)
 			if (!preloadSamples && !region->sample())
 			{
 				setStatusInfo(QString("Loading sample %1").arg(QFileInfo(region->m_sampleFile.value_or("N/A")).fileName()));
-				bool sampleInPool = false;
-				bool successfulLoadSample = region->initializeSample(QFileInfo(m_sfzFilePath).absoluteDir(), *m_samplePool, &sampleInPool);
+				bool successfulLoadSample = region->initializeSample(QFileInfo(PathUtil::toAbsolute(m_sfzFilePath)).absoluteDir());
 				if (successfulLoadSample)
 				{
-					setStatusInfo((sampleInPool ? QString("Loaded sample %1 (already cached)") : QString("Loaded sample %1")).arg(QFileInfo(region->m_sampleFile.value_or("N/A")).fileName()));
+					setStatusInfo(QString("Loaded sample %1").arg(QFileInfo(region->m_sampleFile.value_or("N/A")).fileName()));
 				}
 				else
 				{
@@ -294,7 +291,7 @@ void SfzPlayer::loadSfzFile(const QString& filePath, const bool resetCCKnobs)
 	// Setup a map for keeping track of which switch keys may be pressed. This is more efficient than having array with 128 element, since that takes much longer to loop over, and most keys are not switch keys
 	m_sfzGlobalState.initializeSwitchKeysMap(m_controlsConfig);
 
-	m_sfzFilePath = filePath;
+	m_sfzFilePath = PathUtil::toShortestRelative(filePath);
 
 	// Hand off the vector of regions to SfzRegionManager, which will sort them out to optimize trigger selection
 	// Don't immediately set m_regionManager, since the audio thread may still be accessing it; instead set the temporary object
@@ -319,24 +316,18 @@ void SfzPlayer::preloadAllSamples()
 void SfzPlayer::sampleLoadingThreadFunction()
 {
 	// The samples are stored with relative paths with respect to the sfz file, so first find the parent directory:
-	QDir parentDirectory = QFileInfo(m_sfzFilePath).absoluteDir();
+	QDir parentDirectory = QFileInfo(PathUtil::toAbsolute(m_sfzFilePath)).absoluteDir();
 
 	int i = 0; // Count the number of regions
-	int samplesLoadedFromDisk = 0; // Count the number of samples which had to be loaded from disk
-	int samplesAlreadyInPool = 0; // Count the number of samples which had previously been loaded into the pool and didn't need to be loaded from disk
+	int samplesLoaded = 0; // Count the number of samples which were loaded via LMMS's SampleCache
 	int samplesFailedToLoad = 0; // Count the number of samples which couldn't be loaded (invalid path, etc)
 	for (auto* region : m_regionManager->allRegions())
 	{
 		// Update the GUI info text to notify the user as samples are loaded
 		setStatusInfo(QString("Loading sample %1/%2 %3").arg(i+1).arg(m_regionManager->allRegions().size()).arg(QFileInfo(region->m_sampleFile.value_or("N/A")).fileName()));
 		// Initialize the sample into the temporary pool, so that it doesn't disturb the audio thread which may still be using the previous samples.
-		bool sampleInPool = false;
-		bool successfulLoadSample = region->initializeSample(parentDirectory, *m_samplePool, &sampleInPool);
-		if (successfulLoadSample)
-		{
-			if (sampleInPool) { samplesAlreadyInPool++; }
-			else { samplesLoadedFromDisk++; }
-		}
+		bool successfulLoadSample = region->initializeSample(parentDirectory);
+		if (successfulLoadSample) { samplesLoaded++; }
 		else
 		{
 			samplesFailedToLoad++;
@@ -346,11 +337,11 @@ void SfzPlayer::sampleLoadingThreadFunction()
 	}
 	if (samplesFailedToLoad == 0)
 	{
-		setStatusInfo(QString("Initialized %1 regions.\nLoaded %2 samples from disk.\nRetrieved %3 from sample pool.").arg(m_regionManager->allRegions().size()).arg(samplesLoadedFromDisk).arg(samplesAlreadyInPool));
+		setStatusInfo(QString("Initialized %1 regions.\nLoaded %2 samples.").arg(m_regionManager->allRegions().size()).arg(samplesLoaded));
 	}
 	else
 	{
-		setStatusInfo(QString("Initialized %1 regions.\nLoaded %2 samples from disk.\nRetrieved %3 from sample pool.\nWARNING: Failed to load %4 samples, see logs for details.").arg(m_regionManager->allRegions().size()).arg(samplesLoadedFromDisk).arg(samplesAlreadyInPool).arg(samplesFailedToLoad));
+		setStatusInfo(QString("Initialized %1 regions.\nLoaded %2 samples.\nWARNING: Failed to load %3 samples, see logs for details.").arg(m_regionManager->allRegions().size()).arg(samplesLoaded).arg(samplesFailedToLoad));
 	}
 	m_currentlyLoadingSamples = false; // TODO this doesn't seem thread safe, since there would be a brief moment in time where this is false but the thread is still active?
 }
@@ -387,8 +378,6 @@ void SfzPlayer::mainThreadUpdateAfterDataSwap()
 			// Sync the internal knobs to the LMMS knobs. TODO why does `setInitValue` not trigger this?
 			processTrigger(SfzTrigger::controlChangeEvent(0, i, m_parentTrack->midiCCModel(i)->value())); // TODO there may be a cleaner way to do this
 		}
-		// So that the GUI shows an accurate sample count, refresh the sample pool so that old pointers to samples are removed
-		m_samplePool->clearExpiredWeakPtrs();
 		// Update the GUI
 		emit fileLoaded();
 

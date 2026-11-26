@@ -47,7 +47,7 @@ class SfzPlayer : public Instrument
 	Q_OBJECT
 
 public:
-	SfzPlayer(InstrumentTrack* instrumentTrack);
+	explicit SfzPlayer(InstrumentTrack* instrumentTrack);
 	~SfzPlayer();
 
 	void playNote(NotePlayHandle* handle, SampleFrame* workingBuffer) override;
@@ -91,9 +91,6 @@ private:
 
 	//! Holds information about midi CC default values, labels, which CC's are actually used, etc
 	SfzControlsConfig m_controlsConfig;
-
-	//! Shared pointer of the current SfzSamplePool, shared across all instances of SfzPlayer. Holding this shared_ptr keeps the sample pool alive, since after the last SfzPlayer is deleted, the sample pool is deleted too.
-	std::shared_ptr<SfzSamplePool> m_samplePool;
 
 	//! Unfortunately, LMMS by default has the velocity of NoteOff events be 0. However, SFZ expects them to match the velocity of the corresponding NoteOn event.
 	//! To account for this, we store the velocity of the last NoteOn event for each key, and use that value when hanlding NoteOff events.

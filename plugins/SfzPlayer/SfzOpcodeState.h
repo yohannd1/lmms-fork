@@ -32,6 +32,7 @@
 namespace lmms
 {
 
+//! Representation of a <region>-like object in an SFZ file, which stores all the configurations regarding how and when a sample should be played
 class SfzOpcodeState
 {
 public:
@@ -39,9 +40,9 @@ public:
 
 	//! Given an opcode assignment such as `lokey=45`, passing "m_lokey" and "45" to this function
 	//! will take those values and figure out if "lokey" is a valid opcode, and whether "45" is a valid value for it.
-	//! If so, it will set the internal member variable corresponding to it, and return true.
-	//! If it was unsucessful, it will print an error message and return false.
-	bool setOpcodeByStrings(const QString& name, const QString& value);
+	//! If so, it will set the internal member variable corresponding to it.
+	//! If it was unsucessful, it will print an error message.
+	void setOpcodeByStrings(const QString& name, const QString& value);
 
 
 	/***********************************************************************/
@@ -152,9 +153,9 @@ public:
 	//
 	// Misc Volume
 	//
-	// Gain is the same as volume. Some opcodes use the word volume, some use gain, both are decibals
+	// Gain is the same as volume. Some opcodes use the word volume, some use gain, both are decibels
 	// It seems that "gain" by itself isn't a real opcode, but gain_ccN and gain_onccN are... just to make the logic eaiser, I have gain as a normal alias.
-	ModulatableOpcode m_volume {{"volume", "gain", "group_volume"}, 0.0f}; // In decibals
+	ModulatableOpcode m_volume {{"volume", "gain", "group_volume"}, 0.0f}; // In decibels
 	ModulatableOpcode m_pan {"pan", 0.0f};
 
 	//

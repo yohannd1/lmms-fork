@@ -41,7 +41,6 @@
 #include "LedCheckBox.h"
 #include "PixmapButton.h"
 #include "SfzPlayer.h"
-#include "SfzSamplePool.h"
 #include "StringPairDrag.h"
 #include "Track.h"
 #include "embed.h"
@@ -123,7 +122,7 @@ void SfzPlayerView::onFileLoaded()
 	for (int i = 0; i < NumMidiCCs; ++i)
 	{
 		// Only add a knob if the control is actually used
-		if (m_instrument->m_controlsConfig.m_activeMidiCCs.at(i))
+		if (m_instrument->m_controlsConfig.activeMidiCCs().at(i))
 		{
 			const QString& controlLabel = m_instrument->m_controlsConfig.m_label_cc.at(i).value_or(tr("CC %1").arg(i));
 			auto ccKnob = new Knob(KnobType::Bright26, controlLabel, m_controlsWidget);
@@ -140,16 +139,16 @@ void SfzPlayerView::onFileLoaded()
 
 	// Update the switch key list
 	QStringList switchKeyLabels;
-	for (const auto& [key, info] : m_instrument->m_controlsConfig.m_switchKeyInfo)
+	for (const auto& [key, info] : m_instrument->m_controlsConfig.switchKeyInfo())
 	{
 		QString label = QString("- %1 %2 [range: %3 - %4]")
 			.arg(keyNumToString(key))
-			.arg(info.sw_label)
-			.arg(keyNumToString(info.sw_lokey))
-			.arg(keyNumToString(info.sw_hikey));
-		if (info.sw_default != std::nullopt)
+			.arg(info.swLabel)
+			.arg(keyNumToString(info.swLokey))
+			.arg(keyNumToString(info.swHikey));
+		if (info.swDefault != std::nullopt)
 		{
-			label += QString(" default: %1").arg(keyNumToString(info.sw_default.value()));
+			label += QString(" default: %1").arg(keyNumToString(info.swDefault.value()));
 		}
 		switchKeyLabels.push_back(label);
 	}
@@ -171,11 +170,9 @@ void SfzPlayerView::periodicUpdate()
 	if (m_instrument->m_regionManager != nullptr)
 	{
 		m_generalInfoLabel->setText(
-			QString("File: %1\nRegions: %2\nSamples (across all instances): %3 (%4 MB)")
+			QString("File: %1\nRegions: %2")
 				.arg(QFileInfo(m_instrument->m_sfzFilePath).fileName())
 				.arg(m_instrument->m_regionManager->allRegions().size())
-				.arg(SfzSamplePool::instance()->sampleCount())
-				.arg(QString::number(SfzSamplePool::instance()->sampleMemoryUsage() / 1000000.0f, 'g', 4))
 		);
 	}
 }
@@ -223,16 +220,6 @@ void SfzPlayerView::dropEvent(QDropEvent* de)
 		return;
 	}
 	de->ignore();
-}
-
-void SfzPlayerView::resizeEvent(QResizeEvent* re)
-{
-}
-
-void SfzPlayerView::paintEvent(QPaintEvent* pe)
-{
-	//QPainter brush(this);
-	//brush.fillRect(rect(), QColor(19, 19, 20));
 }
 
 } // namespace gui

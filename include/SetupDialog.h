@@ -124,7 +124,7 @@ private slots:
 	void openSF2File();
 	void setSF2File(const QString & sf2File);
 	void openSFZDir();
-	void setSFZDir(const QString & sfzDir);
+	void setSFZDir(const QString& sfzDir);
 	void openGIGDir();
 	void setGIGDir(const QString & gigDir);
 	void openThemeDir();
@@ -224,7 +224,7 @@ private:
 #ifdef LMMS_HAVE_FLUIDSYNTH
 	QLineEdit * m_sf2FileLineEdit;
 #endif
-	QLineEdit * m_sfzDirLineEdit;
+	QLineEdit* m_sfzDirLineEdit;
 	QLineEdit * m_backgroundPicFileLineEdit;
 
 	QLabel * restartWarningLbl;
