@@ -197,7 +197,6 @@ PianoRoll::PianoRoll() :
 	m_editMode( EditMode::Draw ),
 	m_ctrlMode( EditMode::Draw ),
 	m_mouseDownRight( false ),
-	m_scrollBack( false ),
 	m_stepRecorderWidget(this, DEFAULT_PR_PPB, PR_TOP_MARGIN, PR_BOTTOM_MARGIN + m_notesEditHeight, WHITE_KEY_WIDTH, 0),
 	m_stepRecorder(*this, m_stepRecorderWidget),
 	m_barLineColor( 0, 0, 0 ),
@@ -299,13 +298,10 @@ PianoRoll::PianoRoll() :
 	connect( &m_stepRecorderWidget, SIGNAL( positionChanged( const lmms::TimePos& ) ),
 			this, SLOT( updatePositionStepRecording( const lmms::TimePos& ) ) );
 
-	// update timeline when in record-accompany mode
+	// Update timeline position when parent editors are playing
 	connect(&Engine::getSong()->getTimeline(Song::PlayMode::Song), &Timeline::positionChanged, this, &PianoRoll::updatePositionAccompany);
-	// TODO
-/*	connect( engine::getSong()->getPlayPos( Song::PlayMode::Pattern ).m_timeLine,
-				SIGNAL( positionChanged( const lmms::TimePos& ) ),
-			this,
-			SLOT( updatePositionAccompany( const lmms::TimePos& ) ) );*/
+	connect(&Engine::getSong()->getTimeline(Song::PlayMode::Pattern), &Timeline::positionChanged, this, &PianoRoll::updatePositionAccompany);
+
 
 	removeSelection();
 
@@ -529,10 +525,9 @@ void PianoRoll::markSemiTone(SemiToneMarkerAction i, bool fromMenu)
 			break;
 		case SemiToneMarkerAction::MarkCurrentSemiTone:
 		{
-			QList<int>::iterator it = std::find( m_markedSemiTones.begin(), m_markedSemiTones.end(), key );
-			if( it != m_markedSemiTones.end() )
+			if (auto it = std::ranges::find(m_markedSemiTones, key); it != m_markedSemiTones.end())
 			{
-				m_markedSemiTones.erase( it );
+				m_markedSemiTones.erase(it);
 			}
 			else
 			{
@@ -547,11 +542,9 @@ void PianoRoll::markSemiTone(SemiToneMarkerAction i, bool fromMenu)
 			if ( m_markedSemiTones.contains(key) )
 			{
 				// lets erase all of the ones that match this by octave
-				QList<int>::iterator i;
 				for (int octave : aok)
 				{
-					i = std::find(m_markedSemiTones.begin(), m_markedSemiTones.end(), octave);
-					if (i != m_markedSemiTones.end())
+					if (auto i = std::ranges::find(m_markedSemiTones, octave); i != m_markedSemiTones.end())
 					{
 						m_markedSemiTones.erase(i);
 					}
@@ -672,8 +665,8 @@ void PianoRoll::glueNotes()
 		m_midiClip->addJournalCheckPoint();
 
 		// Sort notes on key and then pos.
-		std::sort(selectedNotes.begin(), selectedNotes.end(),
-			[](const Note * note, const Note * compareNote) -> bool
+		std::ranges::sort(selectedNotes,
+			[](const Note* note, const Note* compareNote)
 			{
 				if (note->key() == compareNote->key())
 				{
@@ -737,11 +730,11 @@ void PianoRoll::fitNoteLengths(bool fill)
 	}
 	else if (!fill)
 	{
-		std::sort(notes.begin(), notes.end(), Note::lessThan);
+		std::ranges::sort(notes, Note::lessThan);
 	}
 	if (fill)
 	{
-		std::sort(notes.begin(), notes.end(), [](Note* n1, Note* n2) { return n1->endPos() < n2->endPos(); });
+		std::ranges::sort(notes, {}, [](Note* n) { return n->endPos(); });
 	}
 
 	int length;
@@ -869,6 +862,9 @@ void PianoRoll::setCurrentMidiClip( MidiClip* newMidiClip )
 	m_startKey = INITIAL_START_KEY;
 
 	m_stepRecorder.setCurrentMidiClip(newMidiClip);
+
+	// Update visibility of position line so that it hides itself if the clip is deleted
+	updatePositionLinePos();
 
 	if( ! hasValidMidiClip() )
 	{
@@ -2982,7 +2978,7 @@ void PianoRoll::setupSelectedChords()
 		if (note->pos() >= maxTime && maxTime != -1)
 		{
 			// Sort the notes by key before adding the chord to the vector
-			std::sort(currentChord.begin(), currentChord.end(), [](Note* a, Note* b){ return a->key() < b->key(); });
+			std::ranges::sort(currentChord, {}, &Note::key);
 			m_selectedChords.push_back(currentChord);
 			currentChord.clear();
 			maxTime = note->endPos();
@@ -3035,7 +3031,7 @@ void PianoRoll::updateStrumPos(QMouseEvent* me, bool initial, bool warp)
 				// if this is the clicked note, calculate it's ratio up the chord
 				if (note == clickedNote && chord.size() > 1)
 				{
-					m_strumHeightRatio = 1.f * std::distance(chord.begin(), std::find(chord.begin(), chord.end(), clickedNote)) / (chord.size() - 1);
+					m_strumHeightRatio = 1.f * std::distance(chord.begin(), std::ranges::find(chord, clickedNote)) / (chord.size() - 1);
 				}
 			}
 		}
@@ -4119,11 +4115,8 @@ void PianoRoll::wheelEvent(QWheelEvent * we )
 					volume_t vol = qBound<int>( MinVolume, n->getVolume() + step, MaxVolume );
 					n->setVolume( vol );
 				}
-				bool allVolumesEqual = std::all_of( nv.begin(), nv.end(),
-					[nv](const Note *note)
-					{
-						return note->getVolume() == nv[0]->getVolume();
-					});
+				const bool allVolumesEqual = std::ranges::all_of(nv,
+					[nv](const Note* note) { return note->getVolume() == nv[0]->getVolume(); });
 				if ( allVolumesEqual )
 				{
 					// show the volume hover-text only if all notes have the
@@ -4140,11 +4133,8 @@ void PianoRoll::wheelEvent(QWheelEvent * we )
 					panning_t pan = qBound(PanningLeft, static_cast<panning_t>(n->getPanning() + step), PanningRight);
 					n->setPanning(pan);
 				}
-				bool allPansEqual = std::all_of( nv.begin(), nv.end(),
-					[nv](const Note *note)
-					{
-						return note->getPanning() == nv[0]->getPanning();
-					});
+				const bool allPansEqual = std::ranges::all_of(nv,
+					[nv](const Note* note) { return note->getPanning() == nv[0]->getPanning(); });
 				if ( allPansEqual )
 				{
 					// show the pan hover-text only if all notes have the same
@@ -4426,7 +4416,8 @@ void PianoRoll::stop()
 {
 	Engine::getSong()->stop();
 	m_recording = false;
-	m_scrollBack = m_timeLine->autoScroll() != TimeLineWidget::AutoScrollState::Disabled;
+	// Scroll back to the start if autoscroll is enabled
+	autoScroll(m_timeLine->timeline()->pos());
 
 	auto* songEditor = GuiApplication::instance()->songEditor()->m_editor;
 
@@ -4839,40 +4830,33 @@ bool PianoRoll::deleteSelectedNotes()
 
 
 
-void PianoRoll::autoScroll( const TimePos & t )
+void PianoRoll::autoScroll(const TimePos & t)
 {
 	const int w = width() - m_whiteKeyWidth;
-	if (m_timeLine->autoScroll() == TimeLineWidget::AutoScrollState::Stepped) 
+	if (m_timeLine->autoScroll() == TimeLineWidget::AutoScrollState::Disabled)
 	{
-		if (t > m_currentPosition + w * TimePos::ticksPerBar() / m_ppb)
+		return;
+	}
+	else if (m_timeLine->autoScroll() == TimeLineWidget::AutoScrollState::Stepped)
+	{
+		if (t < m_currentPosition || t > m_currentPosition + w * TimePos::ticksPerBar() / m_ppb)
 		{
-			m_leftRightScroll->setValue(t.getBar() * TimePos::ticksPerBar());
-		}
-		else if (t < m_currentPosition)
-		{
-			TimePos t2 = std::max(t - w * TimePos::ticksPerBar() *
-						TimePos::ticksPerBar() / m_ppb, static_cast<tick_t>(0));
-			m_leftRightScroll->setValue(t2.getBar() * TimePos::ticksPerBar());
+			m_leftRightScroll->setValue(t.getTicks());
 		}
 	}
 	else if (m_timeLine->autoScroll() == TimeLineWidget::AutoScrollState::Continuous)
 	{
 		m_leftRightScroll->setValue(std::max(t.getTicks() - w * TimePos::ticksPerBar() / m_ppb / 2, 0));
 	}
-	m_scrollBack = false;
 }
 
 
 
 void PianoRoll::updatePosition()
 {
-	const TimePos& t = m_timeLine->timeline()->pos();
-	if ((Engine::getSong()->isPlaying()
-			&& Engine::getSong()->playMode() == Song::PlayMode::MidiClip
-			&& m_timeLine->autoScroll() != TimeLineWidget::AutoScrollState::Disabled
-		) || m_scrollBack)
+	if (Engine::getSong()->isPlaying())
 	{
-		autoScroll(t);
+		autoScroll(m_timeLine->timeline()->pos());
 	}
 	updatePositionLinePos();
 }
@@ -4907,23 +4891,31 @@ void PianoRoll::updatePositionLineHeight()
 
 void PianoRoll::updatePositionAccompany()
 {
-	const TimePos& t = Engine::getSong()->getPlayPos(Song::PlayMode::Song);
+	if (!hasValidMidiClip()) { return; }
 	Song * s = Engine::getSong();
 
-	if( m_recording && hasValidMidiClip() &&
-					s->playMode() != Song::PlayMode::MidiClip )
+	if (m_midiClip->getTrack()->trackContainer() ==	Engine::patternStore())
 	{
-		TimePos pos = t;
-		if (s->playMode() != Song::PlayMode::Pattern)
+		if (s->playMode() == Song::PlayMode::Pattern)
 		{
-			pos -= m_midiClip->startPosition() + m_midiClip->startTimeOffset();
+			// Don't offset the timeline position by the clip start position when in the pattern editor, since
+			// the internal position of each clip depends on which pattern they are part of, and isn't visible to the user.
+			TimePos newTimelinePos = s->getPlayPos(Song::PlayMode::Pattern);
+			// Don't update the timeline if the playhead isn't within the clip bounds
+			if (newTimelinePos >= m_midiClip->startTimeOffset() && newTimelinePos < m_midiClip->length() - m_midiClip->startTimeOffset())
+			{
+				m_timeLine->timeline()->setTicks(newTimelinePos);
+			}
 		}
-		if( (int) pos > 0 )
+	}
+	else if (s->playMode() == Song::PlayMode::Song)
+	{
+		TimePos newTimelinePos = s->getPlayPos(Song::PlayMode::Song) - m_midiClip->startPosition() - m_midiClip->startTimeOffset();
+		if (newTimelinePos >= m_midiClip->startTimeOffset() && newTimelinePos < m_midiClip->length() - m_midiClip->startTimeOffset())
 		{
 			// Passing false to prevent any `positionJumped` signals from being emitted, since this movement is supposed
 			// to be smoothly tracking the Song's timeline, not the from user forcefully dragging it.
-			m_timeLine->timeline()->setTicks(pos, false);
-			autoScroll( pos );
+			m_timeLine->timeline()->setTicks(newTimelinePos, false);
 		}
 	}
 }
